@@ -45,16 +45,16 @@ const SelfieAnalyzer = () => {
   // Camera initialization
   useEffect(() => {
     let mounted = true;
+    const videoElement = videoRef.current;
 
     const initializeCamera = async () => {
-      if (!isCameraOpen || !videoRef.current) return;
+      if (!isCameraOpen || !videoElement) return;
 
       try {
-        // Stop any existing streams
-        if (videoRef.current.srcObject) {
-          const oldStream = videoRef.current.srcObject as MediaStream;
+        if (videoElement.srcObject) {
+          const oldStream = videoElement.srcObject as MediaStream;
           oldStream.getTracks().forEach(track => track.stop());
-          videoRef.current.srcObject = null;
+          videoElement.srcObject = null;
         }
 
         addDebugMessage('Initializing camera...');
@@ -72,11 +72,11 @@ const SelfieAnalyzer = () => {
           return;
         }
 
-        videoRef.current.srcObject = newStream;
+        videoElement.srcObject = newStream;
         
         await new Promise((resolve) => {
-          if (!videoRef.current) return;
-          videoRef.current.onloadedmetadata = resolve;
+          if (!videoElement) return;
+          videoElement.onloadedmetadata = resolve;
         });
 
         if (!mounted) {
@@ -84,7 +84,7 @@ const SelfieAnalyzer = () => {
           return;
         }
 
-        await videoRef.current.play();
+        await videoElement.play();
         if (mounted) {
           setStream(newStream);
           addDebugMessage('Camera initialized successfully');
@@ -102,10 +102,10 @@ const SelfieAnalyzer = () => {
 
     return () => {
       mounted = false;
-      if (videoRef.current?.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach(track => track.stop());
-        videoRef.current.srcObject = null;
+      if (videoElement?.srcObject) {
+        const currentStream = videoElement.srcObject as MediaStream;
+        currentStream.getTracks().forEach(track => track.stop());
+        videoElement.srcObject = null;
       }
     };
   }, [isCameraOpen]);
@@ -116,10 +116,11 @@ const SelfieAnalyzer = () => {
   };
 
   const resetAll = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
+    const videoElement = videoRef.current;
+    if (videoElement?.srcObject) {
+      const currentStream = videoElement.srcObject as MediaStream;
+      currentStream.getTracks().forEach(track => track.stop());
+      videoElement.srcObject = null;
     }
     setStream(null);
     setImage(null);
@@ -133,17 +134,16 @@ const SelfieAnalyzer = () => {
   };
 
   const captureImage = () => {
-    if (!videoRef.current) {
+    const videoElement = videoRef.current;
+    if (!videoElement) {
       setError('Video stream not available');
       return;
     }
 
     try {
       const canvas = document.createElement('canvas');
-      const video = videoRef.current;
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
       
       const ctx = canvas.getContext('2d');
       if (!ctx) {
@@ -152,7 +152,7 @@ const SelfieAnalyzer = () => {
 
       ctx.scale(-1, 1);
       ctx.translate(-canvas.width, 0);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
       
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setImage(dataUrl);
@@ -207,7 +207,6 @@ const SelfieAnalyzer = () => {
     <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
       <h2 className="text-2xl font-bold text-center mb-6">Selfie Analysis</h2>
       
-      {/* Debug Information */}
       <div className="mb-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32">
         <p className="font-bold">Debug Info:</p>
         {debug.map((msg, i) => (
