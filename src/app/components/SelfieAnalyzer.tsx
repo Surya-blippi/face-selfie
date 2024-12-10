@@ -19,6 +19,7 @@ const SelfieAnalyzer = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
+  // Cleanup function for camera stream
   useEffect(() => {
     return () => {
       if (stream) {
@@ -27,54 +28,109 @@ const SelfieAnalyzer = () => {
     };
   }, [stream]);
 
-  const startCamera = async () => {
+  // Debug function to list available cameras
+  const listCameras = async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(device => device.kind === 'videoinput');
+      console.log('Available cameras:', cameras);
+    } catch (error) {
+      console.error('Error listing cameras:', error);
+    }
+  };
+
+  useEffect(() => {
+    listCameras();
+  }, []);
+
+  const startCamera = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError('Your browser does not support camera access');
+      return;
+    }
+
+    // Stop any existing streams
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+
+    try {
+      let mediaStream;
       
+      try {
+        // First try to get the front camera
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "user"
+          }
+        });
+      } catch (frontCameraError) {
+        // If front camera fails, try any available camera
+        console.log('Front camera failed, trying any camera');
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => resolve(true);
+          }
+        });
+
         await videoRef.current.play();
         setStream(mediaStream);
         setIsCameraOpen(true);
         setError(null);
+        console.log('Camera started successfully');
       }
-    } catch (error: unknown) {
-      console.error('Camera error:', error);
+    } catch (error) {
+      console.error('Camera start error:', error);
       setError('Unable to access camera. Please ensure you have granted camera permissions and are using a supported browser.');
     }
   };
 
   const captureImage = () => {
-    if (videoRef.current) {
-      try {
-        const canvas = document.createElement('canvas');
-        const video = videoRef.current;
-        
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          setImage(dataUrl);
-          
-          if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-          }
-          setStream(null);
-          setIsCameraOpen(false);
-        }
-      } catch (error: unknown) {
-        console.error('Capture error:', error);
-        setError('Failed to capture image. Please try again.');
+    if (!videoRef.current) {
+      setError('Video stream not available');
+      return;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      const video = videoRef.current;
+      
+      // Set canvas size to match video dimensions
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not get canvas context');
       }
+
+      // Draw the current video frame
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert to JPEG with 0.8 quality
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      setImage(dataUrl);
+      
+      // Cleanup
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      setStream(null);
+      setIsCameraOpen(false);
+    } catch (error) {
+      console.error('Capture error:', error);
+      setError('Failed to capture image. Please try again.');
     }
   };
 
@@ -92,6 +148,7 @@ const SelfieAnalyzer = () => {
     setError(null);
 
     try {
+      // Simulated analysis results - replace with actual API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       setAnalysis({
@@ -103,7 +160,7 @@ const SelfieAnalyzer = () => {
           "Try warm-toned makeup colors"
         ]
       });
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Analysis error:', error);
       setError('Unable to analyze image. Please try again.');
     } finally {
@@ -112,17 +169,20 @@ const SelfieAnalyzer = () => {
   };
 
   const resetAll = () => {
-    setImage(null);
-    setAnalysis(null);
-    setError(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
     }
     setStream(null);
+    setImage(null);
+    setAnalysis(null);
+    setError(null);
     setIsCameraOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   };
 
   return (
@@ -163,13 +223,15 @@ const SelfieAnalyzer = () => {
 
       {isCameraOpen && (
         <div className="space-y-4">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full rounded-lg bg-gray-100"
-          />
+          <div className="relative w-full pt-[56.25%]">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute top-0 left-0 w-full h-full rounded-lg bg-gray-100 object-cover"
+            />
+          </div>
           <div className="flex gap-2">
             <button 
               onClick={resetAll}
