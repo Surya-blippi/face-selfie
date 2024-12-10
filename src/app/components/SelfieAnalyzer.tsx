@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera } from 'lucide-react';
-import Image from 'next/image';
 
 interface Analysis {
   skinTone: string;
@@ -190,12 +189,12 @@ const SelfieAnalyzer = () => {
 
       {image && !analysis && (
         <div className="space-y-4">
-          <div className="relative w-full aspect-video">
-            <Image 
+          <div className="w-full aspect-video relative rounded-lg overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
               src={image}
               alt="Captured selfie"
-              fill
-              className="rounded-lg object-contain"
+              className="w-full h-full object-contain"
             />
           </div>
           <div className="flex gap-2">
@@ -219,12 +218,12 @@ const SelfieAnalyzer = () => {
       {analysis && (
         <div className="space-y-4">
           <div className="flex gap-4">
-            <div className="relative w-1/3 aspect-video">
-              <Image 
+            <div className="w-1/3 aspect-video relative rounded-lg overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
                 src={image!}
                 alt="Analyzed selfie"
-                fill
-                className="rounded-lg object-contain"
+                className="w-full h-full object-contain"
               />
             </div>
             <div>
