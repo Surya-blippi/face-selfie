@@ -25,7 +25,6 @@ const SelfieAnalyzer = () => {
     console.log(message);
   };
 
-  // Initial check for camera support
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('Your browser does not support camera access');
@@ -42,7 +41,6 @@ const SelfieAnalyzer = () => {
       });
   }, []);
 
-  // Camera initialization
   useEffect(() => {
     let mounted = true;
     const videoElement = videoRef.current;
@@ -115,7 +113,7 @@ const SelfieAnalyzer = () => {
     setIsCameraOpen(true);
   };
 
-  const resetAll = () => {
+  const resetAll = (clearImage = false) => {
     const videoElement = videoRef.current;
     if (videoElement?.srcObject) {
       const currentStream = videoElement.srcObject as MediaStream;
@@ -123,7 +121,9 @@ const SelfieAnalyzer = () => {
       videoElement.srcObject = null;
     }
     setStream(null);
-    setImage(null);
+    if (clearImage) {
+      setImage(null);
+    }
     setAnalysis(null);
     setError(null);
     setIsCameraOpen(false);
@@ -150,14 +150,27 @@ const SelfieAnalyzer = () => {
         throw new Error('Could not get canvas context');
       }
 
+      // First draw the video frame
+      ctx.drawImage(videoElement, 0, 0);
+      
+      // For mirrored image, do a second draw with flip
+      ctx.save();
       ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
-      ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(videoElement, -canvas.width, 0);
+      ctx.restore();
       
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setImage(dataUrl);
-      resetAll();
       addDebugMessage('Image captured successfully');
+      
+      // Close camera after capturing
+      setIsCameraOpen(false);
+      if (videoElement.srcObject) {
+        const currentStream = videoElement.srcObject as MediaStream;
+        currentStream.getTracks().forEach(track => track.stop());
+        videoElement.srcObject = null;
+      }
+      setStream(null);
     } catch (error) {
       console.error('Capture error:', error);
       setError('Failed to capture image. Please try again.');
@@ -263,7 +276,7 @@ const SelfieAnalyzer = () => {
           </div>
           <div className="flex gap-2">
             <button 
-              onClick={resetAll}
+              onClick={() => resetAll(true)}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
@@ -291,7 +304,7 @@ const SelfieAnalyzer = () => {
           </div>
           <div className="flex gap-2">
             <button 
-              onClick={resetAll}
+              onClick={() => resetAll(true)}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Reset
@@ -340,7 +353,7 @@ const SelfieAnalyzer = () => {
           </div>
 
           <button 
-            onClick={resetAll}
+            onClick={() => resetAll(true)}
             className="w-full border border-gray-300 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors mt-4"
           >
             Try Another Photo
