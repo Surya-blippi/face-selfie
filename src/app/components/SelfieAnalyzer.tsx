@@ -25,14 +25,13 @@ const SelfieAnalyzer = () => {
     console.log(message);
   };
 
+  // Initial check for camera support
   useEffect(() => {
-    // Check browser compatibility
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('Your browser does not support camera access');
       return;
     }
 
-    // List available devices on mount
     navigator.mediaDevices.enumerateDevices()
       .then(devices => {
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
@@ -43,52 +42,73 @@ const SelfieAnalyzer = () => {
       });
   }, []);
 
+  // Camera initialization
   useEffect(() => {
+    let mounted = true;
+
     const initializeCamera = async () => {
-      if (isCameraOpen && videoRef.current) {
-        try {
-          addDebugMessage('Initializing camera from effect...');
-          const newStream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-              facingMode: 'user',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: false
-          });
+      if (!isCameraOpen || !videoRef.current) return;
 
-          addDebugMessage('Stream obtained in effect');
-          videoRef.current.srcObject = newStream;
+      try {
+        // Stop any existing streams
+        if (videoRef.current.srcObject) {
+          const oldStream = videoRef.current.srcObject as MediaStream;
+          oldStream.getTracks().forEach(track => track.stop());
+          videoRef.current.srcObject = null;
+        }
+
+        addDebugMessage('Initializing camera...');
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+
+        if (!mounted) {
+          newStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
+        videoRef.current.srcObject = newStream;
+        
+        await new Promise((resolve) => {
+          if (!videoRef.current) return;
+          videoRef.current.onloadedmetadata = resolve;
+        });
+
+        if (!mounted) {
+          newStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
+        await videoRef.current.play();
+        if (mounted) {
           setStream(newStream);
-
-          videoRef.current.onloadedmetadata = async () => {
-            addDebugMessage('Video metadata loaded');
-            try {
-              await videoRef.current?.play();
-              addDebugMessage('Video playing successfully');
-            } catch (playError) {
-              addDebugMessage(`Error playing video: ${playError}`);
-              setError('Failed to start video playback');
-              resetAll();
-            }
-          };
-        } catch (error) {
+          addDebugMessage('Camera initialized successfully');
+        }
+      } catch (error) {
+        if (mounted) {
           addDebugMessage(`Camera initialization error: ${error}`);
           setError('Could not initialize camera. Please ensure permissions are granted and no other app is using the camera.');
-          resetAll();
+          setIsCameraOpen(false);
         }
       }
     };
 
     initializeCamera();
 
-    // Cleanup function
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      mounted = false;
+      if (videoRef.current?.srcObject) {
+        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+        tracks.forEach(track => track.stop());
+        videoRef.current.srcObject = null;
       }
     };
-  }, [isCameraOpen, stream]);
+  }, [isCameraOpen]);
 
   const startCamera = () => {
     addDebugMessage('Starting camera...');
@@ -96,12 +116,9 @@ const SelfieAnalyzer = () => {
   };
 
   const resetAll = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
     if (videoRef.current?.srcObject) {
-      const oldStream = videoRef.current.srcObject as MediaStream;
-      oldStream.getTracks().forEach(track => track.stop());
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
     setStream(null);
@@ -133,14 +150,12 @@ const SelfieAnalyzer = () => {
         throw new Error('Could not get canvas context');
       }
 
-      // Flip the image horizontally if needed
       ctx.scale(-1, 1);
       ctx.translate(-canvas.width, 0);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setImage(dataUrl);
-      
       resetAll();
       addDebugMessage('Image captured successfully');
     } catch (error) {
@@ -242,31 +257,12 @@ const SelfieAnalyzer = () => {
               muted
               style={{ transform: 'scaleX(-1)' }}
               className="absolute top-0 left-0 w-full h-full object-cover"
-              onError={(e) => {
-                addDebugMessage(`Video error: ${e}`);
-                setError('Error with video element');
-              }}
             />
             <div className="absolute bottom-2 right-2 bg-white px-2 py-1 rounded text-xs">
               {stream ? 'Camera Active' : 'Starting Camera...'}
             </div>
           </div>
           <div className="flex gap-2">
-            <button 
-              onClick={() => {
-                addDebugMessage('Manual camera check');
-                if (videoRef.current) {
-                  addDebugMessage(`Video ready state: ${videoRef.current.readyState}`);
-                  addDebugMessage(`Video playing: ${!videoRef.current.paused}`);
-                  addDebugMessage(`Video has source: ${!!videoRef.current.srcObject}`);
-                } else {
-                  addDebugMessage('Video element not available');
-                }
-              }}
-              className="px-4 py-2 bg-gray-200 rounded-lg"
-            >
-              Check Camera
-            </button>
             <button 
               onClick={resetAll}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"

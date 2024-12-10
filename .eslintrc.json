@@ -1,7 +1,7 @@
 {
-  "extends": "next/core-web-plugins",
+  "extends": "next",
   "rules": {
     "@typescript-eslint/no-unused-vars": "error",
-    "@next/next/no-img-element": "off"  // This will disable the img warning
+    "@next/next/no-img-element": "off"
   }
 }
