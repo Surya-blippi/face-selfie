@@ -20,6 +20,11 @@ const SelfieAnalyzer = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
+  const addDebugMessage = (message: string) => {
+    setDebug(prev => [...prev, `${new Date().toISOString()}: ${message}`]);
+    console.log(message);
+  };
+
   useEffect(() => {
     // Check browser compatibility
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -27,89 +32,87 @@ const SelfieAnalyzer = () => {
       return;
     }
 
-    // List available devices
+    // List available devices on mount
     navigator.mediaDevices.enumerateDevices()
       .then(devices => {
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
         addDebugMessage(`Found ${videoDevices.length} video devices`);
-        console.log('Available video devices:', videoDevices);
       })
       .catch(err => {
-        console.error('Error listing devices:', err);
-        addDebugMessage('Error listing video devices');
+        addDebugMessage(`Error listing devices: ${err}`);
       });
+  }, []);
 
-    return () => {
-      if (videoRef.current?.srcObject) {
-        const oldStream = videoRef.current.srcObject as MediaStream;
-        oldStream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
+  useEffect(() => {
+    const initializeCamera = async () => {
+      if (isCameraOpen && videoRef.current) {
+        try {
+          addDebugMessage('Initializing camera from effect...');
+          const newStream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+
+          addDebugMessage('Stream obtained in effect');
+          videoRef.current.srcObject = newStream;
+          setStream(newStream);
+
+          videoRef.current.onloadedmetadata = async () => {
+            addDebugMessage('Video metadata loaded');
+            try {
+              await videoRef.current?.play();
+              addDebugMessage('Video playing successfully');
+            } catch (playError) {
+              addDebugMessage(`Error playing video: ${playError}`);
+              setError('Failed to start video playback');
+              resetAll();
+            }
+          };
+        } catch (error) {
+          addDebugMessage(`Camera initialization error: ${error}`);
+          setError('Could not initialize camera. Please ensure permissions are granted and no other app is using the camera.');
+          resetAll();
+        }
       }
+    };
+
+    initializeCamera();
+
+    // Cleanup function
+    return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [stream]);
+  }, [isCameraOpen, stream]);
 
-  const addDebugMessage = (message: string) => {
-    setDebug(prev => [...prev, `${new Date().toISOString()}: ${message}`]);
-    console.log(message);
+  const startCamera = () => {
+    addDebugMessage('Starting camera...');
+    setIsCameraOpen(true);
   };
 
-  const startCamera = async () => {
-    addDebugMessage('Starting camera...');
-    
-    // Reset everything first
-    resetAll();
-
-    try {
-      addDebugMessage('Requesting camera access...');
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      });
-
-      addDebugMessage('Camera access granted');
-      
-      if (!videoRef.current) {
-        addDebugMessage('Video element not found!');
-        return;
-      }
-
-      // Set up video element
-      videoRef.current.srcObject = newStream;
-      
-      // Wait for metadata to load
-      videoRef.current.onloadedmetadata = async () => {
-        addDebugMessage('Video metadata loaded');
-        try {
-          await videoRef.current?.play();
-          addDebugMessage('Video playing successfully');
-          setStream(newStream);
-          setIsCameraOpen(true);
-          setError(null);
-        } catch (playError) {
-          addDebugMessage(`Error playing video: ${playError}`);
-          throw playError;
-        }
-      };
-
-      // Add error handler
-      videoRef.current.onerror = (err) => {
-        addDebugMessage(`Video element error: ${err}`);
-        setError('Error with video playback');
-      };
-
-    } catch (error) {
-      addDebugMessage(`Camera access error: ${error}`);
-      console.error('Camera access error:', error);
-      setError('Could not access camera. Please ensure permissions are granted and no other app is using the camera.');
-      resetAll();
+  const resetAll = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
     }
+    if (videoRef.current?.srcObject) {
+      const oldStream = videoRef.current.srcObject as MediaStream;
+      oldStream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setStream(null);
+    setImage(null);
+    setAnalysis(null);
+    setError(null);
+    setIsCameraOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    addDebugMessage('Reset completed');
   };
 
   const captureImage = () => {
@@ -138,11 +141,7 @@ const SelfieAnalyzer = () => {
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setImage(dataUrl);
       
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      setStream(null);
-      setIsCameraOpen(false);
+      resetAll();
       addDebugMessage('Image captured successfully');
     } catch (error) {
       console.error('Capture error:', error);
@@ -187,26 +186,6 @@ const SelfieAnalyzer = () => {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const resetAll = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-    if (videoRef.current?.srcObject) {
-      const oldStream = videoRef.current.srcObject as MediaStream;
-      oldStream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setStream(null);
-    setImage(null);
-    setAnalysis(null);
-    setError(null);
-    setIsCameraOpen(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    addDebugMessage('Reset completed');
   };
 
   return (
@@ -263,6 +242,10 @@ const SelfieAnalyzer = () => {
               muted
               style={{ transform: 'scaleX(-1)' }}
               className="absolute top-0 left-0 w-full h-full object-cover"
+              onError={(e) => {
+                addDebugMessage(`Video error: ${e}`);
+                setError('Error with video element');
+              }}
             />
             <div className="absolute bottom-2 right-2 bg-white px-2 py-1 rounded text-xs">
               {stream ? 'Camera Active' : 'Starting Camera...'}
@@ -276,6 +259,8 @@ const SelfieAnalyzer = () => {
                   addDebugMessage(`Video ready state: ${videoRef.current.readyState}`);
                   addDebugMessage(`Video playing: ${!videoRef.current.paused}`);
                   addDebugMessage(`Video has source: ${!!videoRef.current.srcObject}`);
+                } else {
+                  addDebugMessage('Video element not available');
                 }
               }}
               className="px-4 py-2 bg-gray-200 rounded-lg"
