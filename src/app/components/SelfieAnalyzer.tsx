@@ -2,10 +2,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera } from 'lucide-react';
+import { FaceAnalysisService } from '@/services/faceAnalysis';
 
 interface Analysis {
-  skinTone: string;
   faceShape: string;
+  skinTone: string;
   recommendations: string[];
 }
 
@@ -163,7 +164,6 @@ const SelfieAnalyzer = () => {
       setImage(dataUrl);
       addDebugMessage('Image captured successfully');
       
-      // Close camera after capturing
       setIsCameraOpen(false);
       if (videoElement.srcObject) {
         const currentStream = videoElement.srcObject as MediaStream;
@@ -195,22 +195,32 @@ const SelfieAnalyzer = () => {
     setError(null);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setAnalysis({
-        skinTone: "Warm",
-        faceShape: "Oval",
-        recommendations: [
-          "Your face shape suits side-parted hairstyles",
-          "Gold jewelry would complement your warm skin tone",
-          "Try warm-toned makeup colors"
-        ]
+      addDebugMessage('Initializing face analysis...');
+      const analysisService = new FaceAnalysisService();
+      await analysisService.initialize();
+      addDebugMessage('Face detection model loaded');
+
+      const img = new Image();
+      img.src = image!;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
       });
-      addDebugMessage('Analysis completed');
-    } catch (error) {
+      addDebugMessage('Image prepared for analysis');
+
+      const result = await analysisService.analyzeFace(img);
+      addDebugMessage(`Analysis complete - Face Shape: ${result.faceShape}, Skin Tone: ${result.skinTone}`);
+
+      setAnalysis({
+        faceShape: result.faceShape,
+        skinTone: result.skinTone,
+        recommendations: result.recommendations
+      });
+
+    } catch (error: any) {
       console.error('Analysis error:', error);
-      setError('Unable to analyze image. Please try again.');
-      addDebugMessage('Error during analysis');
+      setError(error.message || 'Failed to analyze image. Please ensure your face is clearly visible and try again.');
+      addDebugMessage(`Analysis error: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
