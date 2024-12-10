@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera } from 'lucide-react';
+import Image from 'next/image';
 
 interface Analysis {
   skinTone: string;
@@ -19,7 +20,6 @@ const SelfieAnalyzer = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  // Cleanup function for camera stream
   useEffect(() => {
     return () => {
       if (stream) {
@@ -32,7 +32,7 @@ const SelfieAnalyzer = () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'user', // This ensures the front camera is used
+          facingMode: 'user',
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
@@ -45,8 +45,8 @@ const SelfieAnalyzer = () => {
         setIsCameraOpen(true);
         setError(null);
       }
-    } catch (err) {
-      console.error('Camera error:', err);
+    } catch (error: unknown) {
+      console.error('Camera error:', error);
       setError('Unable to access camera. Please ensure you have granted camera permissions and are using a supported browser.');
     }
   };
@@ -57,28 +57,23 @@ const SelfieAnalyzer = () => {
         const canvas = document.createElement('canvas');
         const video = videoRef.current;
         
-        // Set canvas dimensions to match video
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         
-        // Draw the video frame to canvas
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // Convert to image
           const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
           setImage(dataUrl);
           
-          // Cleanup
           if (stream) {
             stream.getTracks().forEach(track => track.stop());
           }
           setStream(null);
           setIsCameraOpen(false);
         }
-      } catch (err) {
-        console.error('Capture error:', err);
+      } catch (error: unknown) {
+        console.error('Capture error:', error);
         setError('Failed to capture image. Please try again.');
       }
     }
@@ -98,7 +93,6 @@ const SelfieAnalyzer = () => {
     setError(null);
 
     try {
-      // Simulated analysis results - replace with actual API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       setAnalysis({
@@ -110,7 +104,8 @@ const SelfieAnalyzer = () => {
           "Try warm-toned makeup colors"
         ]
       });
-    } catch (err) {
+    } catch (error: unknown) {
+      console.error('Analysis error:', error);
       setError('Unable to analyze image. Please try again.');
     } finally {
       setIsProcessing(false);
@@ -193,14 +188,16 @@ const SelfieAnalyzer = () => {
         </div>
       )}
 
-      {/* Rest of the component remains the same */}
       {image && !analysis && (
         <div className="space-y-4">
-          <img 
-            src={image} 
-            alt="Captured selfie" 
-            className="w-full rounded-lg"
-          />
+          <div className="relative w-full aspect-video">
+            <Image 
+              src={image}
+              alt="Captured selfie"
+              fill
+              className="rounded-lg object-contain"
+            />
+          </div>
           <div className="flex gap-2">
             <button 
               onClick={resetAll}
@@ -222,11 +219,14 @@ const SelfieAnalyzer = () => {
       {analysis && (
         <div className="space-y-4">
           <div className="flex gap-4">
-            <img 
-              src={image} 
-              alt="Analyzed selfie" 
-              className="w-1/3 rounded-lg"
-            />
+            <div className="relative w-1/3 aspect-video">
+              <Image 
+                src={image!}
+                alt="Analyzed selfie"
+                fill
+                className="rounded-lg object-contain"
+              />
+            </div>
             <div>
               <h3 className="font-semibold text-lg">Analysis Results:</h3>
               <p className="text-gray-600">Face Shape: <span className="text-gray-900">{analysis.faceShape}</span></p>
