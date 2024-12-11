@@ -21,12 +21,12 @@ export class FaceAnalysisService {
   async initialize() {
     if (!this.model) {
       await tf.ready();
-      // Use MediaPipe face detector model
+      // Use MediaPipe face detector model with correct configuration
       this.model = await faceDetection.createDetector(
         faceDetection.SupportedModels.MediaPipeFaceDetector,
         {
           runtime: 'tfjs',
-          //refineLandmarks: true,
+          modelType: 'full', // Use full model for better accuracy
           maxFaces: 1
         }
       );
@@ -38,7 +38,11 @@ export class FaceAnalysisService {
       throw new Error('Model not initialized');
     }
 
-    const faces = await this.model.estimateFaces(imageElement);
+    // Detect faces
+    const faces = await this.model.estimateFaces(imageElement, {
+      flipHorizontal: false,
+      staticImageMode: true
+    });
     
     if (faces.length === 0) {
       throw new Error('No face detected');
@@ -46,9 +50,10 @@ export class FaceAnalysisService {
 
     const face = faces[0];
     const keypoints = face.keypoints;
+    const box = face.box;
 
-    // Calculate basic measurements from keypoints
-    const measurements = this.calculateMeasurements(keypoints);
+    // Calculate basic measurements from face box and keypoints
+    const measurements = this.calculateMeasurements(box, keypoints);
     const faceShape = this.determineFaceShape(measurements);
     const skinTone = await this.analyzeSkinTone(imageElement);
     const recommendations = this.generateRecommendations(faceShape, skinTone);
@@ -61,28 +66,28 @@ export class FaceAnalysisService {
     };
   }
 
-  private calculateMeasurements(keypoints: faceDetection.Keypoint[]) {
-    // Find key facial points
-    const leftEar = keypoints.find(k => k.name === 'leftEar');
-    const rightEar = keypoints.find(k => k.name === 'rightEar');
-    const nose = keypoints.find(k => k.name === 'noseTip');
-    const chin = keypoints.find(k => k.name === 'chin');
-    const leftCheek = keypoints.find(k => k.name === 'leftCheek');
-    const rightCheek = keypoints.find(k => k.name === 'rightCheek');
+  private calculateMeasurements(box: { width: number; height: number }, keypoints: faceDetection.Keypoint[]) {
+    // Use bounding box for basic measurements
+    const faceWidth = box.width;
+    const faceHeight = box.height;
 
-    const faceWidth = leftEar && rightEar ? 
-      this.distance([leftEar.x, leftEar.y], [rightEar.x, rightEar.y]) : 0;
-    const faceHeight = nose && chin ? 
-      this.distance([nose.x, nose.y], [chin.x, chin.y]) * 2 : 0;
-    const jawWidth = leftCheek && rightCheek ? 
-      this.distance([leftCheek.x, leftCheek.y], [rightCheek.x, rightCheek.y]) : 0;
+    // Find key facial points
+    const leftEye = keypoints.find(k => k.name === 'leftEye');
+    const rightEye = keypoints.find(k => k.name === 'rightEye');
+    const noseTip = keypoints.find(k => k.name === 'noseTip');
+    const mouthCenter = keypoints.find(k => k.name === 'mouth');
+
+    // Calculate jawWidth using eye positions
+    const jawWidth = leftEye && rightEye ? 
+      this.distance([leftEye.x, leftEye.y], [rightEye.x, rightEye.y]) * 1.5 : faceWidth;
 
     return {
       faceWidth,
       faceHeight,
       jawWidth,
-      foreheadWidth: faceWidth * 0.8, // Estimated
-      chinLength: faceHeight * 0.2 // Estimated
+      foreheadWidth: faceWidth * 0.9, // Estimated from face width
+      chinLength: noseTip && mouthCenter ? 
+        this.distance([noseTip.x, noseTip.y], [mouthCenter.x, mouthCenter.y]) : faceHeight * 0.2
     };
   }
 
@@ -93,6 +98,7 @@ export class FaceAnalysisService {
     );
   }
 
+  // Rest of the methods remain the same...
   private determineFaceShape(measurements: any) {
     const {
       faceWidth,
