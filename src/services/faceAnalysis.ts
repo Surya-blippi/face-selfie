@@ -21,12 +21,10 @@ export class FaceAnalysisService {
   async initialize() {
     if (!this.model) {
       await tf.ready();
-      // Use MediaPipe face detector model with correct configuration
       this.model = await faceDetection.createDetector(
         faceDetection.SupportedModels.MediaPipeFaceDetector,
         {
           runtime: 'tfjs',
-          modelType: 'full', // Use full model for better accuracy
           maxFaces: 1
         }
       );
@@ -38,21 +36,20 @@ export class FaceAnalysisService {
       throw new Error('Model not initialized');
     }
 
-    // Detect faces
+    // Detect faces with correct configuration
     const faces = await this.model.estimateFaces(imageElement, {
-      flipHorizontal: false,
-      staticImageMode: true
+      flipHorizontal: false
     });
     
     if (faces.length === 0) {
-      throw new Error('No face detected');
+      throw new Error('No face detected in the image. Please try again with a clearer photo.');
     }
 
     const face = faces[0];
-    const keypoints = face.keypoints;
     const box = face.box;
+    const keypoints = face.keypoints;
 
-    // Calculate basic measurements from face box and keypoints
+    // Calculate measurements
     const measurements = this.calculateMeasurements(box, keypoints);
     const faceShape = this.determineFaceShape(measurements);
     const skinTone = await this.analyzeSkinTone(imageElement);
@@ -67,38 +64,23 @@ export class FaceAnalysisService {
   }
 
   private calculateMeasurements(box: { width: number; height: number }, keypoints: faceDetection.Keypoint[]) {
-    // Use bounding box for basic measurements
     const faceWidth = box.width;
     const faceHeight = box.height;
 
-    // Find key facial points
-    const leftEye = keypoints.find(k => k.name === 'leftEye');
-    const rightEye = keypoints.find(k => k.name === 'rightEye');
-    const noseTip = keypoints.find(k => k.name === 'noseTip');
-    const mouthCenter = keypoints.find(k => k.name === 'mouth');
-
-    // Calculate jawWidth using eye positions
-    const jawWidth = leftEye && rightEye ? 
-      this.distance([leftEye.x, leftEye.y], [rightEye.x, rightEye.y]) * 1.5 : faceWidth;
+    // Calculate relative measurements
+    const jawWidth = faceWidth * 0.8;
+    const foreheadWidth = faceWidth * 0.7;
+    const chinLength = faceHeight * 0.2;
 
     return {
       faceWidth,
       faceHeight,
       jawWidth,
-      foreheadWidth: faceWidth * 0.9, // Estimated from face width
-      chinLength: noseTip && mouthCenter ? 
-        this.distance([noseTip.x, noseTip.y], [mouthCenter.x, mouthCenter.y]) : faceHeight * 0.2
+      foreheadWidth,
+      chinLength
     };
   }
 
-  private distance(point1: number[], point2: number[]) {
-    return Math.sqrt(
-      Math.pow(point2[0] - point1[0], 2) + 
-      Math.pow(point2[1] - point1[1], 2)
-    );
-  }
-
-  // Rest of the methods remain the same...
   private determineFaceShape(measurements: any) {
     const {
       faceWidth,
